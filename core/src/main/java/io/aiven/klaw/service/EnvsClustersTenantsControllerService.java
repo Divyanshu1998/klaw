@@ -458,18 +458,43 @@ public class EnvsClustersTenantsControllerService {
         newEnv.setId(String.valueOf(id));
       }
     } else {
-      Optional<Env> existingEnvOpt =
-          envActualList.stream().filter(env -> env.getId().equals(newEnv.getId())).findFirst();
-      if (existingEnvOpt.isEmpty()) {
+      // ID PROVIDED
+      var db = manageDatabase.getHandleDbRequests();
 
-        // cannot modify a deleted env
-        return ApiResponse.notOk("Cannot modify a deleted environment.");
+      // 1) Does this id still exist?
+      Env current = db.getEnvDetails(newEnv.getId(), tenantId);
+
+      if (current != null) {
+        // UPDATE path — but block edits to a deleted env
+        if (!"true".equalsIgnoreCase(String.valueOf(current.getEnvExists()))) {
+          return ApiResponse.notOk("Cannot modify a deleted environment.");
+        }
+
+        // exclude self from name-uniqueness check below
+        envActualList =
+            envActualList.stream()
+                .filter(env -> !env.getId().equals(newEnv.getId()))
+                .collect(toList());
+
+      } else {
+        // 2) Not found in DB → could be either deleted or brand new.
+        // Decide if we should treat this as a CREATE with an explicit id.
+        Integer maxId = db.getNextEnvId(tenantId); // SELECT max(id) FROM kwenv WHERE tenantid=?
+        int providedId = Integer.parseInt(newEnv.getId());
+        // System.out.println("Maxid = " + maxId + " provided id = " + providedId);
+        boolean isNextId = (maxId != null && providedId == maxId + 1);
+
+        if (!isNextId) {
+          // Client is trying to "edit" an env that no longer exists (or uses a stale id)
+          return ApiResponse.notOk("Cannot modify a deleted environment.");
+        }
+
+        // Legit CREATE with explicit next id → run normal create validations
+        if (validateConnectedClusters(newEnv, kafkaClusterIds, schemaClusterIds)) {
+          return ApiResponse.notOk(ENV_CLUSTER_TNT_110);
+        }
+        // Keep the provided id; do NOT bump the sequence here.
       }
-      // modify env
-      envActualList =
-          envActualList.stream()
-              .filter(env -> !env.getId().equals(newEnv.getId()))
-              .collect(toList());
     }
 
     // Same name per type (kafka, kafkaconnect) in tenant not posssible.

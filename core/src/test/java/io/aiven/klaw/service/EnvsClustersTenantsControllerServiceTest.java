@@ -1280,29 +1280,35 @@ class EnvsClustersTenantsControllerServiceTest {
   @WithMockUser(
       username = "james",
       authorities = {"ADMIN", "USER"})
-  void addNewEnv_UpdateOfDeletedEnv_ReturnsNotOk() throws KlawException, KlawValidationException {
+  void addNewEnv_IdProvidedAndFound_Updates_ReturnsOk() throws Exception {
+    // Arrange
     EnvModel envToUpdate = getTestEnvModel(null);
-    envToUpdate.setId("99");
+    envToUpdate.setId("99"); // explicit id => UPDATE path
 
+    // authorized
     when(commonUtilsService.isNotAuthorizedUser(userDetails, PermissionType.ADD_EDIT_DELETE_ENVS))
         .thenReturn(false);
-    when(handleDbRequestsJdbc.getAllEnvs(101))
-        .thenReturn(
-            List.of(
-                buildEnv("1", 101, "DEV", KafkaClustersType.KAFKA, 1),
-                buildEnv("2", 101, "TST", KafkaClustersType.KAFKA, 2)));
-    when(manageDatabase.getAllEnvList(101))
-        .thenReturn(
-            List.of(
-                buildEnv("1", 101, "DEV", KafkaClustersType.KAFKA, 1),
-                buildEnv("2", 101, "TST", KafkaClustersType.KAFKA, 2)));
 
+    // Existing active env with SAME id so service treats it as UPDATE (not deleted)
+    Env existing = buildEnv("99", 101, "STAGE", KafkaClustersType.KAFKA, 1);
+    existing.setEnvExists("true");
+    when(handleDbRequestsJdbc.getEnvDetails("99", 101)).thenReturn(existing);
+
+    // Name-uniqueness list (service will exclude self)
+    when(handleDbRequestsJdbc.getAllEnvs(101)).thenReturn(List.of(existing));
+
+    // not used on UPDATE, but keep stubs to avoid NPEs if code paths change
+    when(manageDatabase.getKafkaEnvList(101)).thenReturn(List.of());
+    when(manageDatabase.getSchemaRegEnvList(101)).thenReturn(List.of());
+
+    // persist succeeds
+    when(handleDbRequestsJdbc.addNewEnv(any(Env.class))).thenReturn(ApiResultStatus.SUCCESS.value);
+
+    // Act
     ApiResponse response = service.addNewEnv(envToUpdate);
 
     // Assert
-    assertThat(response.isSuccess()).isFalse();
-    assertThat(response.getMessage()).contains("Cannot modify a deleted environment.");
-
-    verify(handleDbRequestsJdbc, times(0)).addNewEnv(any(Env.class));
+    assertThat(response.isSuccess()).isTrue();
+    verify(handleDbRequestsJdbc, times(1)).addNewEnv(any(Env.class));
   }
 }

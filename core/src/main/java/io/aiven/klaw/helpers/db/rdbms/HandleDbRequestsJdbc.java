@@ -1288,4 +1288,8 @@ public class HandleDbRequestsJdbc implements HandleDbRequests {
   public String updateDbWithUpdatedVersions(List<MessageSchema> schemaListUpdated) {
     return jdbcUpdateHelper.updateDbWithUpdatedVersions(schemaListUpdated);
   }
+
+  public Integer getCurrentSeqMax(String entityName, int tenantId) {
+    return jdbcSelectHelper.selectCurrentSeqMax(entityName, tenantId);
+  }
 }

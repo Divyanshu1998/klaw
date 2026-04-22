@@ -2276,4 +2276,13 @@ public class SelectDataJdbc {
 
     return operationalRequestsRepo.findAll(Example.of(request));
   }
+
+  public Integer selectCurrentSeqMax(String entityName, int tenantId) {
+    KwEntitySequenceID id = new KwEntitySequenceID();
+    id.setTenantId(tenantId);
+    id.setEntityName(entityName);
+
+    Optional<KwEntitySequence> row = kwEntitySequenceRepo.findById(id);
+    return row.map(KwEntitySequence::getSeqId).orElse(null); // null if sequence row not created yet
+  }
 }
