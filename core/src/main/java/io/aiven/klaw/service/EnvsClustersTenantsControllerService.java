@@ -75,12 +75,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
 public class EnvsClustersTenantsControllerService {
+
+  private static final String ENV_STALE_UPDATE_ERR =
+      "Environment was modified or deleted by another user. Please refresh and try again.";
+
+  private static final String ENV_VERSION_REQUIRED_ERR =
+      "Environment version is required for updates. Please refresh and try again.";
 
   @Autowired private MailUtils mailService;
 
@@ -458,43 +465,20 @@ public class EnvsClustersTenantsControllerService {
         newEnv.setId(String.valueOf(id));
       }
     } else {
-      // ID PROVIDED
-      var db = manageDatabase.getHandleDbRequests();
-
-      // 1) Does this id still exist?
-      Env current = db.getEnvDetails(newEnv.getId(), tenantId);
-
-      if (current != null) {
-        // UPDATE path — but block edits to a deleted env
-        if (!"true".equalsIgnoreCase(String.valueOf(current.getEnvExists()))) {
-          return ApiResponse.notOk("Cannot modify a deleted environment.");
-        }
-
-        // exclude self from name-uniqueness check below
-        envActualList =
-            envActualList.stream()
-                .filter(env -> !env.getId().equals(newEnv.getId()))
-                .collect(toList());
-
-      } else {
-        // 2) Not found in DB → could be either deleted or brand new.
-        // Decide if we should treat this as a CREATE with an explicit id.
-        Integer maxId = db.getNextEnvId(tenantId); // SELECT max(id) FROM kwenv WHERE tenantid=?
-        int providedId = Integer.parseInt(newEnv.getId());
-        // System.out.println("Maxid = " + maxId + " provided id = " + providedId);
-        boolean isNextId = (maxId != null && providedId == maxId + 1);
-
-        if (!isNextId) {
-          // Client is trying to "edit" an env that no longer exists (or uses a stale id)
-          return ApiResponse.notOk("Cannot modify a deleted environment.");
-        }
-
-        // Legit CREATE with explicit next id → run normal create validations
-        if (validateConnectedClusters(newEnv, kafkaClusterIds, schemaClusterIds)) {
-          return ApiResponse.notOk(ENV_CLUSTER_TNT_110);
-        }
-        // Keep the provided id; do NOT bump the sequence here.
+      if (newEnv.getVersion() == null) {
+        return ApiResponse.notOk(ENV_VERSION_REQUIRED_ERR);
       }
+
+      Env existingEnv =
+          manageDatabase.getHandleDbRequests().getEnvDetails(newEnv.getId(), tenantId);
+      if (existingEnv == null || isFalse(existingEnv.getEnvExists())) {
+        throw new KlawValidationException(ENV_STALE_UPDATE_ERR);
+      }
+
+      envActualList =
+          envActualList.stream()
+              .filter(env -> !env.getId().equals(newEnv.getId()))
+              .collect(toList());
     }
 
     // Same name per type (kafka, kafkaconnect) in tenant not posssible.
@@ -526,6 +510,9 @@ public class EnvsClustersTenantsControllerService {
       } else {
         return ApiResponse.notOk(result);
       }
+    } catch (OptimisticLockingFailureException ex) {
+      log.warn("Optimistic locking conflict while saving env {}", newEnv.getId(), ex);
+      throw new KlawValidationException(ENV_STALE_UPDATE_ERR);
     } catch (KlawValidationException ex) {
       log.error("KlawValidationException:", ex);
       throw ex;

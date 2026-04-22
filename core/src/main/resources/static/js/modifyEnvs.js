@@ -595,6 +595,7 @@ app.controller("modifyEnvsCtrl", function($scope, $http, $location, $window) {
                 var serviceInput = {};
 
                 serviceInput['id'] = $scope.envToEdit;
+                serviceInput['version'] = $scope.envDetails.version;
                 serviceInput['name'] = $scope.envDetails.name;
                 serviceInput['clusterId'] = $scope.envDetails.clusterId;
                 serviceInput['tenantId'] = $scope.envDetails.tenantId;
@@ -667,6 +668,7 @@ app.controller("modifyEnvsCtrl", function($scope, $http, $location, $window) {
 
                     var serviceInput = {};
                     serviceInput['id'] = $scope.envToEdit;
+                    serviceInput['version'] = $scope.envDetails.version;
                     serviceInput['name'] = $scope.envDetails.name;
                     serviceInput['clusterId'] = $scope.envDetails.clusterId;
                     serviceInput['tenantId'] = $scope.envDetails.tenantId;
@@ -732,6 +734,7 @@ app.controller("modifyEnvsCtrl", function($scope, $http, $location, $window) {
 
             var serviceInput = {};
             serviceInput['id'] = $scope.envToEdit;
+            serviceInput['version'] = $scope.envDetails.version;
             serviceInput['name'] = $scope.envDetails.name;
             serviceInput['clusterId'] = $scope.envDetails.clusterId;
             serviceInput['tenantId'] = $scope.envDetails.tenantId;
